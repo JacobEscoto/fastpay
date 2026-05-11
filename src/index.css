@@ -1,0 +1,95 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;800&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background-color: #0c0f0e;
+  color: #e8efe8;
+  font-family: "DM Mono", monospace;
+}
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #4a604a; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #8fa88f; }
+* { scrollbar-color: #4a604a transparent; scrollbar-width: thin; }
+
+@media (min-width: 1024px) {
+  .sidebar-scroll-desktop {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .sidebar-scroll-desktop::-webkit-scrollbar {
+    width: 0;
+    display: none;
+  }
+}
+
+@layer components {
+  .fp-border  { border: 1px solid rgba(255,255,255,0.06); }
+  .fp-border2 { border: 1px solid rgba(255,255,255,0.10); }
+
+  .fp-card {
+    @apply bg-bg1 rounded-fp relative overflow-hidden;
+    border: 1px solid rgba(255,255,255,0.06);
+  }
+  .fp-card::before {
+    content: "";
+    @apply absolute top-0 left-0 right-0 h-px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.10) 40%, rgba(255,255,255,0.10) 60%, transparent);
+  }
+  .fp-card.green-top::before { background: linear-gradient(90deg, transparent, rgba(0,255,135,0.35) 40%, rgba(0,255,135,0.35) 60%, transparent); }
+  .fp-card.blue-top::before  { background: linear-gradient(90deg, transparent, rgba(77,159,255,0.35) 40%, rgba(77,159,255,0.35) 60%, transparent); }
+  .fp-card.amber-top::before { background: linear-gradient(90deg, transparent, rgba(245,166,35,0.35) 40%, rgba(245,166,35,0.35) 60%, transparent); }
+
+  .fp-input {
+    @apply bg-bg2 text-t1 font-mono text-xs rounded-fp px-3 py-2 outline-none w-full transition-colors;
+    border: 1px solid rgba(255,255,255,0.10);
+  }
+  .fp-input:focus { border-color: rgba(0,255,135,0.5); }
+  .fp-input::placeholder { color: #4a604a; }
+
+  .fp-btn-green {
+    @apply font-mono text-green text-xs rounded-fp px-4 py-2 flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap;
+    background: rgba(0,255,135,0.08);
+    border: 1px solid rgba(0,255,135,0.27);
+  }
+  .fp-btn-green:hover { background: rgba(0,255,135,0.14); box-shadow: 0 0 10px rgba(0,255,135,0.10); }
+
+  .fp-btn-ghost {
+    @apply font-mono text-t2 text-xs rounded-fp px-3 py-2 flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap;
+    background: transparent;
+    border: 1px solid rgba(255,255,255,0.10);
+  }
+  .fp-btn-ghost:hover { border-color: rgba(255,255,255,0.18); color: #e8efe8; }
+
+  .fp-slash::before { content: "// "; }
+  .fp-slash { @apply text-t3 text-xs tracking-widest uppercase; }
+
+  .fp-badge-green { @apply text-xs rounded-sm px-1.5 py-0.5 inline-flex items-center gap-1; background: rgba(0,255,135,0.09); color: #00ff87; border: 1px solid rgba(0,255,135,0.20); }
+  .fp-badge-blue  { @apply text-xs rounded-sm px-1.5 py-0.5; background: rgba(77,159,255,0.09); color: #4d9fff; border: 1px solid rgba(77,159,255,0.20); }
+  .fp-badge-amber { @apply text-xs rounded-sm px-1.5 py-0.5; background: rgba(245,166,35,0.09); color: #f5a623; border: 1px solid rgba(245,166,35,0.20); }
+  .fp-badge-red   { @apply text-xs rounded-sm px-1.5 py-0.5; background: rgba(255,64,96,0.09);  color: #ff4060; border: 1px solid rgba(255,64,96,0.20); }
+
+  .fp-chip {
+    @apply font-mono text-xs text-t2 rounded-fp px-3 py-1.5 cursor-pointer transition-all;
+    background: #222b27;
+    border: 1px solid rgba(255,255,255,0.10);
+  }
+  .fp-chip:hover  { border-color: rgba(0,255,135,0.35); color: #00ff87; }
+  .fp-chip.active { background: rgba(0,255,135,0.08); border-color: rgba(0,255,135,0.35); color: #00ff87; }
+
+  .fp-nav {
+    @apply flex items-center gap-2.5 px-2.5 py-2 rounded-fp text-xs text-t2 cursor-pointer transition-all w-full text-left;
+    background: transparent;
+    border: none;
+    border-left: 2px solid transparent;
+  }
+  .fp-nav:hover  { background: #1c2420; color: #e8efe8; }
+  .fp-nav.active { background: rgba(0,255,135,0.08); color: #00ff87; border-left-color: #00ff87; padding-left: 8px; }
+}
