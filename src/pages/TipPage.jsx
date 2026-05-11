@@ -1,114 +1,194 @@
 import { useState, useEffect } from "react"
-import { IconSearch, IconSend, IconCheck, IconLoader2, IconAlertTriangle, IconWallet } from "@tabler/icons-react"
+import {
+    IconSearch,
+    IconSend,
+    IconCheck,
+    IconLoader2,
+    IconAlertTriangle,
+    IconWallet,
+    IconShare2,
+    IconArrowLeft,
+} from "@tabler/icons-react"
 import { useFastPay } from "../hooks/useFastPay"
 import RecentTips from "../components/RecentTips"
 import ErrorToast from "../components/ErrorToast"
+import NotFound from "../pages/NotFound"
 import { supabase } from "../utils/supabase"
+
+/* ─── Constants ─────────────────────────────────────────────────────────── */
 
 const AMOUNTS = [0.1, 0.5, 1, 5, 10]
 const SOL_USD = 146.4
 
-export default function TipPage({ onSuccess, onQR, initialHandle, initialAmount, walletInfo, connected, onConnect }) {
-    const { sendTip, loading, error } = useFastPay()
+/* ─── Helpers ───────────────────────────────────────────────────────────── */
 
-    const [query, setQuery] = useState("")
-    const [user, setUser] = useState(null)
-    const [notFound, setNotFound] = useState(false)
-    const [isSearching, setIsSearching] = useState(false)
+function getInitials(name) {
+    if (!name?.trim()) return "?"
+    const parts = name.trim().split(/\s+/)
+    if (parts.length === 1) return parts[0][0].toUpperCase()
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+}
+
+/** Shared Supabase fetch — used by both profile-mode auto-load and search. */
+async function fetchProfileByUsername(username) {
+    const clean = username.replace("@", "").toLowerCase()
+    const { data, error } = await supabase
+        .from("profiles")
+        .select("username, display_name, bio, avatar_url, wallet_address")
+        .eq("username", clean)
+        .maybeSingle()
+
+    if (error || !data) return null
+    return data
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ProfileCard  (left column)
+   Displays avatar, display name, @handle, bio, verified badge, share button.
+═══════════════════════════════════════════════════════════════════════════ */
+
+function ProfileCard({ user }) {
+    const [copied, setCopied] = useState(false)
+
+    const handleShare = async () => {
+        // Always share the canonical profile URL, not any transient ?amount param
+        const url = `${window.location.origin}/@${user.username}`
+        try {
+            await navigator.clipboard.writeText(url)
+        } catch {
+            // Fallback for browsers without clipboard API
+            const el = Object.assign(document.createElement("input"), { value: url })
+            document.body.appendChild(el)
+            el.select()
+            document.execCommand("copy")
+            document.body.removeChild(el)
+        }
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2200)
+    }
+
+    return (
+        <div className="fp-card green-top p-6 flex flex-col items-center text-center gap-5 lg:sticky lg:top-6">
+
+            {/* ── Avatar ── */}
+            <div
+                className="w-24 h-24 rounded-full overflow-hidden flex items-center justify-center font-head font-extrabold text-3xl shrink-0"
+                style={{
+                    background: "rgba(0,255,135,0.07)",
+                    border: "2px solid rgba(0,255,135,0.35)",
+                    color: "#00FF87",
+                }}
+            >
+                {user.avatar_url ? (
+                    <img
+                        src={user.avatar_url}
+                        alt={user.display_name}
+                        className="w-full h-full object-cover"
+                    />
+                ) : (
+                    getInitials(user.display_name)
+                )}
+            </div>
+
+            {/* ── Identity ── */}
+            <div>
+                <p className="font-head font-extrabold text-xl text-t1 leading-snug">
+                    {user.display_name}
+                </p>
+                <p className="font-mono text-sm text-green mt-1">
+                    @{user.username}
+                </p>
+            </div>
+
+            {/* ── Bio ── */}
+            {user.bio && (
+                <p className="font-mono text-xs text-t2 leading-relaxed max-w-[240px]">
+                    {user.bio}
+                </p>
+            )}
+
+            {/* ── Verified badge ── */}
+            <span className="fp-badge-green inline-flex items-center gap-1.5">
+                <IconCheck size={10} /> Verified Profile
+            </span>
+
+            {/* ── Share button ── */}
+            <button
+                onClick={handleShare}
+                className="w-full flex items-center justify-center gap-2 font-mono text-xs py-2.5 px-4 rounded-lg transition-all duration-200 hover:bg-white/5"
+                style={{
+                    border: `1px solid ${copied ? "rgba(0,255,135,0.40)" : "rgba(255,255,255,0.10)"}`,
+                    color: copied ? "#00FF87" : "var(--color-t2, #8a9a8f)",
+                }}
+                aria-label="Copy profile link to clipboard"
+            >
+                <IconShare2 size={13} />
+                {copied ? "Link Copied!" : "Share Profile"}
+            </button>
+        </div>
+    )
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PaymentPanel  (right column)
+   Amount picker + custom amount + optional message + CTA + RecentTips.
+═══════════════════════════════════════════════════════════════════════════ */
+
+function PaymentPanel({ user, initialAmount, walletInfo, connected, onConnect, onSuccess }) {
+    const { sendTip, loading, error } = useFastPay()
 
     const [selAmt, setSelAmt] = useState(0.5)
     const [custom, setCustom] = useState("")
     const [message, setMessage] = useState("")
-    const [lastTx, setLastTx] = useState(0)
     const [sent, setSent] = useState(false)
     const [errorMsg, setErrorMsg] = useState(null)
 
-    // Handles the search when the URL already contains a user (e.g., /@jacob)
+    // Initialise amount from ?amount= URL param (passed as initialAmount prop)
     useEffect(() => {
-        if (initialHandle) {
-            setQuery(initialHandle)
-            executeSearch(initialHandle)
+        if (!initialAmount) return
+        if (AMOUNTS.includes(initialAmount)) {
+            setSelAmt(initialAmount)
+            setCustom("")
+        } else {
+            setCustom(String(initialAmount))
+            setSelAmt(0)
         }
+    }, [initialAmount])
 
-        if (initialAmount) {
-            if (AMOUNTS.includes(initialAmount)) {
-                setSelAmt(initialAmount)
-                setCustom("")
-            } else {
-                setCustom(String(initialAmount))
-                setSelAmt(0)
-            }
-        }
-    }, [initialHandle, initialAmount])
+    const displayAmt = parseFloat(custom) > 0 ? parseFloat(custom) : selAmt
+    const walletBalance = parseFloat(walletInfo?.sol) || 0
+    const insufficientFunds = connected && displayAmt > 0 && walletBalance < displayAmt
+    const customInvalid = custom !== "" && (isNaN(parseFloat(custom)) || parseFloat(custom) <= 0)
+    const canSend = connected && !loading && !insufficientFunds && !customInvalid && !sent
 
-    // Main function for searching in Supabase
-    async function executeSearch(searchTerm) {
-        if (!searchTerm.trim()) return
-
-        setIsSearching(true)
-        setNotFound(false)
-        setUser(null)
-
-        const cleanUsername = searchTerm.trim().replace('@', '').toLowerCase()
-
-        try {
-            const { data, err } = await supabase
-                .from('profiles')
-                .select('username, display_name, bio, avatar_url, wallet_address')
-                .eq('username', cleanUsername)
-                .maybeSingle()
-
-            if (err || !data) {
-                setNotFound(true)
-            } else {
-                setUser(data)
-            }
-        } catch (err) {
-            console.error("Error buscando usuario:", err)
-            setNotFound(true)
-        } finally {
-            setIsSearching(false)
-        }
-    }
-
-    function search() {
-        executeSearch(query)
-    }
-
-    async function send() {
+    const send = async () => {
         if (!user?.wallet_address) return
-
         const amt = parseFloat(custom) > 0 ? parseFloat(custom) : selAmt
-        const finalMsg = message.trim() === "" ? `Tip sent via FastPay to @${user.username}` : message
+        const finalMsg =
+            message.trim() === ""
+                ? `Tip sent via FastPay to @${user.username}`
+                : message
 
         try {
             const signature = await sendTip(user.wallet_address, user.username, amt, finalMsg)
-
             onSuccess({
                 message: `${amt.toFixed(2)} SOL sent to @${user.username}`,
                 hash: signature,
                 handle: `@${user.username}`,
                 amount: amt,
             })
-
             setSent(true)
-            setTimeout(() => setSent(false), 2000)
-
+            setTimeout(() => setSent(false), 2500)
             setCustom("")
             setMessage("")
-            setLastTx(Date.now())
         } catch (err) {
-            setErrorMsg(err?.message || "An unexpected error ocurred")
+            setErrorMsg(err?.message || "An unexpected error occurred")
         }
     }
 
-    const displayAmt = parseFloat(custom) > 0 ? parseFloat(custom) : selAmt
-    const walletBalance = parseFloat(walletInfo?.sol) || 0
-    const insufficientFunds = user && displayAmt > 0 && walletBalance < displayAmt
-    const customInvalid = custom !== "" && (isNaN(parseFloat(custom)) || parseFloat(custom) <= 0)
-
     return (
-        <div>
+        <div className="flex flex-col gap-4">
+            {/* Error toast from send() */}
             {errorMsg && (
                 <ErrorToast
                     message={errorMsg}
@@ -118,189 +198,332 @@ export default function TipPage({ onSuccess, onQR, initialHandle, initialAmount,
                 />
             )}
 
-            <div className="mb-5">
-                <h2 className="font-head font-extrabold text-lg text-t1 mb-1">Send a Tip</h2>
-                <p className="font-mono text-xs text-t2">Search by username to send Solana securely.</p>
-            </div>
-
-            <p className="fp-slash mb-2.5">RECIPIENT LOOKUP</p>
-            <div className="flex gap-2 mb-4">
-                <input
-                    className="fp-input flex-1"
-                    placeholder="@username (e.g., @jacob)"
-                    value={query}
-                    onChange={e => setQuery(e.target.value)}
-                    onKeyDown={e => e.key === "Enter" && search()}
-                />
-                <button
-                    className="fp-btn-green shrink-0 min-w-[90px] justify-center"
-                    onClick={search}
-                    disabled={isSearching}
-                >
-                    {isSearching ? <IconLoader2 size={13} className="animate-spin" /> : <><IconSearch size={13} /> Find</>}
-                </button>
-            </div>
-
-            {notFound && !user && (
-                <div className="fp-card p-6 mb-4 flex flex-col items-center text-center gap-3">
-                    <svg width="52" height="52" viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <circle cx="22" cy="22" r="13" stroke="rgba(255,255,255,0.12)" strokeWidth="2" />
-                        <line x1="31.5" y1="31.5" x2="42" y2="42" stroke="rgba(255,255,255,0.12)" strokeWidth="2" strokeLinecap="round" />
-                        <line x1="17" y1="17" x2="27" y2="27" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round" />
-                        <line x1="27" y1="17" x2="17" y2="27" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round" />
-                    </svg>
-
-                    <div>
-                        <p className="font-head font-extrabold text-sm text-t1 mb-1">
-                            User not found
-                        </p>
-                        <p className="font-mono text-xs text-t3 leading-relaxed">
-                            <span className="text-red-400">"{query}"</span> isn't registered on FastPay yet.
-                            <br />Double-check the username or ask them to join.
-                        </p>
-                    </div>
+            <div className="fp-card green-top p-5">
+                {/* ── Header ── */}
+                <div className="mb-5">
+                    <h2 className="font-head font-extrabold text-lg text-t1 mb-0.5">
+                        Send a Tip
+                    </h2>
+                    <p className="font-mono text-xs text-t2">
+                        Support{" "}
+                        <span className="text-green font-semibold">@{user.username}</span>{" "}
+                        directly on-chain.
+                    </p>
                 </div>
-            )}
 
-            {user && (
-                <>
-                    <div className="bg-bg2 rounded-fp p-4 flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-3" style={{ border: "1px solid rgba(255,255,255,0.10)" }}>
-                        {/* Avatar */}
-                        <div className="flex items-center gap-4 w-full sm:w-auto">
-                            <div className="w-12 h-12 rounded-full overflow-hidden flex items-center justify-center font-head font-extrabold text-base shrink-0"
-                                style={{ background: "rgba(0,255,135,0.07)", border: "1px solid rgba(0,255,135,0.22)", color: "#00FF87" }}>
-                                {user.avatar_url ? (
-                                    <img src={user.avatar_url} alt={user.display_name} className="w-full h-full object-cover" />
-                                ) : (
-                                    getInitials(user.display_name)
-                                )}
-                            </div>
+                {/* ── Amount presets ── */}
+                <p className="fp-slash mb-3">SELECT AMOUNT</p>
+                <div className="flex gap-2 flex-wrap mb-3">
+                    {AMOUNTS.map((a) => (
+                        <button
+                            key={a}
+                            onClick={() => { setSelAmt(a); setCustom("") }}
+                            className={`fp-chip ${selAmt === a && !custom ? "active" : ""}`}
+                        >
+                            {a} SOL
+                        </button>
+                    ))}
+                </div>
 
-                            <div className="flex-1 sm:hidden">
-                                <p className="font-head font-extrabold text-base text-t1">{user.display_name}</p>
-                                <p className="font-mono text-xs text-green">@{user.username}</p>
-                            </div>
-                        </div>
+                {/* ── Custom amount + USD conversion ── */}
+                <div className="flex gap-2 items-center mb-1">
+                    <input
+                        className={`fp-input flex-1 ${customInvalid ? "border border-red-500/70 focus:border-red-500" : ""}`}
+                        placeholder="Custom SOL amount"
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        value={custom}
+                        onChange={(e) => { setCustom(e.target.value); setSelAmt(0) }}
+                    />
+                    <span className="font-mono text-xs text-t3 whitespace-nowrap min-w-[96px] text-right">
+                        ≈ ${Math.round(displayAmt * SOL_USD).toLocaleString()} USD
+                    </span>
+                </div>
 
-                        {/* Profile Info */}
-                        <div className="hidden sm:block flex-1">
-                            <p className="font-head font-extrabold text-base text-t1">{user.display_name}</p>
-                            <p className="font-mono text-xs text-green mb-1">@{user.username}</p>
-                            {user.bio && <p className="font-mono text-xs text-t2 mb-1.5">{user.bio}</p>}
-                        </div>
-
-                        <div className="sm:hidden w-full">
-                            {user.bio && <p className="font-mono text-xs text-t2 mb-1.5">{user.bio}</p>}
-                        </div>
-
-                        {/* Verified Badge */}
-                        <div className="w-full sm:w-auto sm:text-right border-t sm:border-t-0 pt-3 sm:pt-0" style={{ borderColor: "rgba(255,255,255,0.10)" }}>
-                            <span className="fp-badge-green inline-flex items-center gap-1"><IconCheck size={10} /> Verified Profile</span>
-                        </div>
+                {/* Custom amount error */}
+                {customInvalid ? (
+                    <div className="flex items-center gap-1.5 mb-3">
+                        <IconAlertTriangle size={12} className="text-red-400 shrink-0" />
+                        <p className="font-mono text-xs text-red-400">
+                            Enter a valid amount greater than 0.
+                        </p>
                     </div>
+                ) : (
+                    <div className="mb-3" />
+                )}
 
-                    <div className="fp-card green-top p-4 mb-3">
-                        <p className="fp-slash mb-3">SELECT AMOUNT</p>
-                        <div className="flex gap-2 flex-wrap mb-3">
-                            {AMOUNTS.map(a => (
-                                <button
-                                    key={a}
-                                    onClick={() => { setSelAmt(a); setCustom("") }}
-                                    className={`fp-chip ${selAmt === a && !custom ? "active" : ""}`}
-                                >
-                                    {a} SOL
-                                </button>
-                            ))}
-                        </div>
-                        <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center mb-1">
-                            <div className="flex gap-2 items-center w-full">
-                                <input
-                                    className={`fp-input flex-1 ${customInvalid ? "border border-red-500/70 focus:border-red-500" : ""}`}
-                                    placeholder="Custom SOL amount"
-                                    type="number"
-                                    min="0.01"
-                                    step="0.01"
-                                    value={custom}
-                                    onChange={e => { setCustom(e.target.value); setSelAmt(0) }}
-                                />
-                                <span className="font-mono text-xs text-t3 whitespace-nowrap min-w-[80px]">
-                                    ≈ ${Math.round(displayAmt * SOL_USD).toLocaleString()}
-                                </span>
-                            </div>
-                        </div>
+                {/* ── Optional message ── */}
+                <div className="mb-1">
+                    <textarea
+                        className="fp-input w-full resize-none"
+                        placeholder="Add a public message (optional)"
+                        maxLength={200}
+                        rows={2}
+                        value={message}
+                        onChange={(e) => setMessage(e.target.value)}
+                    />
+                </div>
+                <p className="font-mono text-[10px] text-t3 text-right mb-4">
+                    {message.length}/200
+                </p>
 
-                        {customInvalid && (
-                            <div className="flex items-center gap-1.5 mb-3">
-                                <IconAlertTriangle size={12} className="text-red-400 shrink-0" />
-                                <p className="font-mono text-xs text-red-400">Enter a valid amount greater than 0.</p>
-                            </div>
-                        )}
-
-                        {!customInvalid && <div className="mb-3" />}
-
-                        <div className="mb-4">
-                            <input
-                                className="fp-input w-full"
-                                placeholder="Add a public message (optional)"
-                                maxLength={200}
-                                value={message}
-                                onChange={e => setMessage(e.target.value)}
-                            />
-                        </div>
-
-                        {error && (
-                            <div className="mb-4 p-2 bg-red-500/10 border border-red-500/50 rounded text-red-500 text-xs">
-                                {error}
-                            </div>
-                        )}
-
-                        <div className="flex gap-2">
-                            {!connected ? (
-                                <button
-                                    className="fp-btn-green flex-1 justify-center"
-                                    onClick={onConnect}
-                                >
-                                    <IconWallet size={13} /> Connect Wallet to Send
-                                </button>
-                            ) : (
-                                <button
-                                    className="fp-btn-green flex-1 justify-center disabled:opacity-50 disabled:cursor-not-allowed"
-                                    onClick={send}
-                                    disabled={loading || insufficientFunds || customInvalid || sent}
-                                >
-                                    {sent ? (
-                                        <><IconCheck size={13} /> Sent!</>
-                                    ) : loading ? (
-                                        <><IconLoader2 size={13} className="animate-spin" /> Processing...</>
-                                    ) : (
-                                        <><IconSend size={13} /> Send via Phantom</>
-                                    )}
-                                </button>
-                            )}
-                        </div>
-
-                        {insufficientFunds && (
-                            <div className="flex items-center gap-1.5 mt-2">
-                                <IconAlertTriangle size={12} className="text-red-400 shrink-0" />
-                                <p className="font-mono text-xs text-red-400">
-                                    Insufficient balance — you have {walletBalance.toFixed(2)} SOL, need {displayAmt.toFixed(2)} SOL.
-                                </p>
-                            </div>
-                        )}
+                {/* Error from useFastPay hook */}
+                {error && (
+                    <div className="mb-4 p-2 bg-red-500/10 border border-red-500/50 rounded text-red-500 text-xs">
+                        {error}
                     </div>
-                </>
-            )}
+                )}
 
-            {user?.username && (
-                <RecentTips receiverUsername={user.username} />
-            )}
+                {/* ── Primary CTA ── */}
+                <button
+                    className="fp-btn-green w-full justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+                    onClick={connected ? send : onConnect}
+                    disabled={connected && !canSend}
+                >
+                    {!connected ? (
+                        <><IconWallet size={13} /> Connect Wallet to Tip</>
+                    ) : sent ? (
+                        <><IconCheck size={13} /> Sent!</>
+                    ) : loading ? (
+                        <><IconLoader2 size={13} className="animate-spin" /> Processing…</>
+                    ) : (
+                        <><IconSend size={13} /> Send {displayAmt > 0 ? `${displayAmt} SOL ` : ""}via Phantom</>
+                    )}
+                </button>
+
+                {/* Insufficient funds warning */}
+                {connected && insufficientFunds && (
+                    <div className="flex items-center gap-1.5 mt-2">
+                        <IconAlertTriangle size={12} className="text-red-400 shrink-0" />
+                        <p className="font-mono text-xs text-red-400">
+                            Insufficient balance — you have {walletBalance.toFixed(2)} SOL,
+                            need {displayAmt.toFixed(2)} SOL.
+                        </p>
+                    </div>
+                )}
+            </div>
+
+            {/* ── Recent activity feed (realtime) ── */}
+            <RecentTips receiverUsername={user.username} />
         </div>
     )
 }
 
-function getInitials(name) {
-    if (!name?.trim()) return "?"
-    const parts = name.trim().split(/\s+/)
-    if (parts.length === 1) return parts[0][0].toUpperCase()
-    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+/* ═══════════════════════════════════════════════════════════════════════════
+   TipPage  (default export)
+
+   Operates in two modes decided by the `initialHandle` prop:
+
+   ① PROFILE MODE  (initialHandle provided — route /:user)
+     • Fetches the profile from Supabase on mount.
+     • Shows a full-screen loading state while fetching.
+     • Shows <NotFound /> if the username doesn't exist.
+     • Renders the two-column layout: ProfileCard | PaymentPanel.
+
+   ② SEARCH MODE  (initialHandle === null — route /)
+     • Shows the recipient search bar.
+     • After a user is found, renders the same two-column layout
+       with a "← Search again" escape hatch.
+═══════════════════════════════════════════════════════════════════════════ */
+
+export default function TipPage({
+    onSuccess,
+    onQR,
+    initialHandle,
+    initialAmount,
+    walletInfo,
+    connected,
+    onConnect,
+}) {
+    // Shared resolved-user state (populated by either auto-load or manual search)
+    const [user, setUser] = useState(null)
+    const [notFound, setNotFound] = useState(false)
+
+    // Profile-mode loading (auto-fetch from URL handle)
+    const [profileLoading, setProfileLoading] = useState(!!initialHandle)
+
+    // Search-mode state
+    const [query, setQuery] = useState("")
+    const [isSearching, setIsSearching] = useState(false)
+
+    /* ── Auto-load profile when initialHandle is provided ─────────────── */
+    useEffect(() => {
+        if (!initialHandle) return
+
+        setQuery(initialHandle)
+        setUser(null)
+        setNotFound(false)
+        setProfileLoading(true)
+
+        fetchProfileByUsername(initialHandle).then((data) => {
+            if (data) setUser(data)
+            else setNotFound(true)
+        }).catch(() => {
+            setNotFound(true)
+        }).finally(() => {
+            setProfileLoading(false)
+        })
+    }, [initialHandle])
+
+    /* ── Manual search (homepage) ──────────────────────────────────────── */
+    const executeSearch = async (term) => {
+        if (!term.trim()) return
+        setIsSearching(true)
+        setNotFound(false)
+        setUser(null)
+
+        const data = await fetchProfileByUsername(term).catch(() => null)
+        if (data) setUser(data)
+        else setNotFound(true)
+
+        setIsSearching(false)
+    }
+
+    const clearSearch = () => {
+        setUser(null)
+        setNotFound(false)
+        setQuery("")
+    }
+
+    /* ══════════════════════════════════════════════════════════════════════
+       RENDER: PROFILE MODE  (initialHandle set)
+    ══════════════════════════════════════════════════════════════════════ */
+    if (initialHandle) {
+        // ── Loading ──
+        if (profileLoading) {
+            return (
+                <div className="flex items-center justify-center min-h-[60vh]">
+                    <div
+                        className="fp-card px-8 py-6 flex flex-col items-center gap-3 green-top"
+                        style={{ minWidth: "200px" }}
+                    >
+                        <span className="w-2 h-2 rounded-full bg-green inline-block animate-pulse" />
+                        <p className="font-mono text-xs text-t2 text-center">
+                            Loading profile…
+                        </p>
+                    </div>
+                </div>
+            )
+        }
+
+        // ── Not found ──
+        if (notFound) return <NotFound />
+
+        // ── Safety: data still arriving ──
+        if (!user) return null
+
+        // ── Two-column layout ──
+        return (
+            <div>
+                {/* Breadcrumb-style sub-heading */}
+                <div className="mb-5">
+                    <p className="font-mono text-[11px] text-t3 uppercase tracking-widest">
+                        FastPay · Tip a Creator
+                    </p>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6 items-start">
+                    <ProfileCard user={user} />
+                    <PaymentPanel
+                        user={user}
+                        initialAmount={initialAmount}
+                        walletInfo={walletInfo}
+                        connected={connected}
+                        onConnect={onConnect}
+                        onSuccess={onSuccess}
+                    />
+                </div>
+            </div>
+        )
+    }
+
+    /* ══════════════════════════════════════════════════════════════════════
+       RENDER: SEARCH MODE  (homepage, no initialHandle)
+    ══════════════════════════════════════════════════════════════════════ */
+    return (
+        <div>
+            <div className="mb-5">
+                <h2 className="font-head font-extrabold text-lg text-t1 mb-1">
+                    Send a Tip
+                </h2>
+                <p className="font-mono text-xs text-t2">
+                    Search by username to send Solana securely.
+                </p>
+            </div>
+
+            {/* ── Search bar (visible until a user is found) ── */}
+            {!user && (
+                <>
+                    <p className="fp-slash mb-2.5">RECIPIENT LOOKUP</p>
+                    <div className="flex gap-2 mb-4">
+                        <input
+                            className="fp-input flex-1"
+                            placeholder="@username  (e.g., @jacob)"
+                            value={query}
+                            onChange={(e) => setQuery(e.target.value)}
+                            onKeyDown={(e) => e.key === "Enter" && executeSearch(query)}
+                        />
+                        <button
+                            className="fp-btn-green shrink-0 min-w-[90px] justify-center"
+                            onClick={() => executeSearch(query)}
+                            disabled={isSearching}
+                        >
+                            {isSearching ? (
+                                <IconLoader2 size={13} className="animate-spin" />
+                            ) : (
+                                <><IconSearch size={13} /> Find</>
+                            )}
+                        </button>
+                    </div>
+
+                    {/* Not-found state */}
+                    {notFound && (
+                        <div className="fp-card p-6 mb-4 flex flex-col items-center text-center gap-3">
+                            <svg width="52" height="52" viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <circle cx="22" cy="22" r="13" stroke="rgba(255,255,255,0.12)" strokeWidth="2" />
+                                <line x1="31.5" y1="31.5" x2="42" y2="42" stroke="rgba(255,255,255,0.12)" strokeWidth="2" strokeLinecap="round" />
+                                <line x1="17" y1="17" x2="27" y2="27" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round" />
+                                <line x1="27" y1="17" x2="17" y2="27" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round" />
+                            </svg>
+                            <div>
+                                <p className="font-head font-extrabold text-sm text-t1 mb-1">
+                                    User not found
+                                </p>
+                                <p className="font-mono text-xs text-t3 leading-relaxed">
+                                    <span className="text-red-400">"{query}"</span> isn't registered on FastPay yet.
+                                    <br />Double-check the username or ask them to join.
+                                </p>
+                            </div>
+                        </div>
+                    )}
+                </>
+            )}
+
+            {/* ── Two-column layout once a user is found via search ── */}
+            {user && (
+                <div>
+                    {/* Escape hatch: go back to search */}
+                    <button
+                        className="flex items-center gap-1.5 font-mono text-xs text-t3 hover:text-t1 transition-colors mb-4"
+                        onClick={clearSearch}
+                    >
+                        <IconArrowLeft size={13} /> Search again
+                    </button>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6 items-start">
+                        <ProfileCard user={user} />
+                        <PaymentPanel
+                            user={user}
+                            initialAmount={null}
+                            walletInfo={walletInfo}
+                            connected={connected}
+                            onConnect={onConnect}
+                            onSuccess={onSuccess}
+                        />
+                    </div>
+                </div>
+            )}
+        </div>
+    )
 }

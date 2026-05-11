@@ -44,7 +44,7 @@ export default function QRPage({ userProfile }) {
         <main>
             <header className="mb-5">
                 <h1 className="font-head font-extrabold text-lg text-t1 mb-1">
-                    My QR Code
+                    QR Code
                 </h1>
                 <p className="font-mono text-xs text-t2">
                     Share your personal link to receive tips.

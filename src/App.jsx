@@ -31,44 +31,27 @@ import { supabase } from "./utils/supabase"
    new        → no profile found, show ProfileRegistration modal
 ──────────────────────────────────────────────────────────────────────────── */
 
+/**
+ * ProfileWrapper
+ *
+ * Thin route wrapper for /:user and /@:user paths.
+ * Parses the handle and optional ?amount query param, then
+ * delegates all data-fetching and NotFound logic to TipPage.
+ * This avoids a duplicate Supabase round-trip that the old
+ * implementation performed here before passing to TipPage.
+ */
 const ProfileWrapper = ({ onSuccess, onQR, walletInfo, connected, onConnect }) => {
     const { user } = useParams()
     const location = useLocation()
-    const [userExists, setUserExists] = useState(null)
 
-    const handle = user?.startsWith('@') ? user.toLowerCase() : `@${user?.toLowerCase()}`
+    // Normalize: ensure handle always starts with @
+    const handle = user?.startsWith('@')
+        ? user.toLowerCase()
+        : `@${user?.toLowerCase()}`
 
-    // Check if user exists in Supabase on mount
-    useEffect(() => {
-        const checkUserExists = async () => {
-            const cleanUsername = handle.replace("@", "").toLowerCase()
-            try {
-                const { data, error } = await supabase
-                    .from("profiles")
-                    .select("username")
-                    .eq("username", cleanUsername)
-                    .maybeSingle()
-                setUserExists(!!data && !error)
-            } catch (err) {
-                console.error("[FastPay] Error checking user:", err)
-                setUserExists(false)
-            }
-        }
-
-        checkUserExists()
-    }, [handle])
-
-    if (userExists === null) {
-        return <div className="flex items-center justify-center h-screen">
-            Loading...
-        </div>
-    }
-    if (!userExists) {
-        return <NotFound />
-    }
-
-    const amount = new URLSearchParams(location.search).get('amount')
-    const parsedAmount = parseFloat(amount)
+    // Parse optional ?amount=X from the URL
+    const rawAmount = new URLSearchParams(location.search).get('amount')
+    const parsedAmount = parseFloat(rawAmount)
     const validAmount = !isNaN(parsedAmount) && parsedAmount > 0 ? parsedAmount : null
 
     return (
@@ -104,7 +87,7 @@ function AppContent() {
     // Track previous connected value to detect the transition false → true
     const prevConnectedRef = useRef(false)
 
-    // Fetch balance
+    // Fetch balance whenever wallet connects or a tip is sent
     useEffect(() => {
         if (connected && publicKey) {
             connection.getBalance(publicKey).then(balance => {
@@ -120,18 +103,17 @@ function AppContent() {
         }
     }, [connected, publicKey, connection, balanceTick])
 
+    // React to wallet connect / disconnect transitions
     useEffect(() => {
         const wasConnected = prevConnectedRef.current
         prevConnectedRef.current = connected
 
-        // Reset everything if wallet disconnected
         if (wasConnected && !connected) {
             setProfileStatus('idle')
             setUserProfile(null)
             return
         }
 
-        // Check Supabase if wallet connected
         if (!wasConnected && connected && publicKey) {
             checkProfile(publicKey.toBase58())
         }
@@ -139,7 +121,6 @@ function AppContent() {
 
     const checkProfile = useCallback(async (address) => {
         setProfileStatus('checking')
-
         try {
             const { data, error } = await supabase
                 .from('profiles')
@@ -148,18 +129,15 @@ function AppContent() {
                 .maybeSingle()
 
             if (error) {
-                // Network / unexpected error: fail open so user isn't blocked
                 console.error('[FastPay] Profile check failed:', error.message)
-                setProfileStatus('exists')
+                setProfileStatus('exists') // fail open
                 return
             }
 
             if (data) {
-                // Profile found on any device — skip registration
                 setUserProfile({ username: data.username, displayName: data.display_name })
                 setProfileStatus('exists')
             } else {
-                // New wallet — show registration modal
                 setProfileStatus('new')
             }
         } catch (err) {
@@ -168,32 +146,29 @@ function AppContent() {
         }
     }, [])
 
-    // Registration complete
     const handleRegistrationComplete = useCallback(({ username, displayName }) => {
         setUserProfile({ username, displayName })
         setProfileStatus('exists')
     }, [])
 
-    // Wallet button
     const handleConnectClick = useCallback(() => {
         if (connected) disconnect()
         else setModal(true)
     }, [connected, disconnect])
 
-    const handlePhantomDone = useCallback(() => {
-        setModal(false)
-    }, [])
+    const handlePhantomDone = useCallback(() => setModal(false), [])
 
-    // Tip success
-    const handleSuccess = useCallback(({ message, hash, handle: tipHandle, amount: tipAmount }) => {
+    // After a successful tip, bump the tick to re-fetch the sender's balance
+    const handleSuccess = useCallback(({ message, hash }) => {
         setSuccess({ m: message, h: hash })
         setBalanceTick(t => t + 1)
     }, [])
 
-    const activePage = location.pathname === "/qr" ? "qr" :
-        location.pathname === "/profile" ? "profile" : location.pathname === "/analytics" ? "analytics" : "tip"
+    const activePage =
+        location.pathname === '/qr' ? 'qr' :
+            location.pathname === '/profile' ? 'profile' :
+                location.pathname === '/analytics' ? 'analytics' : 'tip'
 
-    // Shows a brief full-screen checking state so layout doesn't flash
     const isCheckingProfile = profileStatus === 'checking'
 
     return (
@@ -208,10 +183,10 @@ function AppContent() {
                 <Sidebar
                     active={activePage}
                     onNav={(id) => {
-                        if (id === "qr") navigate("/qr")
-                        else if (id === "profile") navigate("/profile")
-                        else if (id === "analytics") navigate("/analytics")
-                        else navigate("/")
+                        if (id === 'qr') navigate('/qr')
+                        else if (id === 'profile') navigate('/profile')
+                        else if (id === 'analytics') navigate('/analytics')
+                        else navigate('/')
                         setIsMenuOpen(false)
                     }}
                     connected={connected}
@@ -224,6 +199,7 @@ function AppContent() {
 
                 <main className="flex-1 bg-bg0 p-4 lg:p-6 overflow-y-auto">
                     <Routes>
+                        {/* ── Homepage: search & send ── */}
                         <Route
                             path="/"
                             element={
@@ -239,8 +215,10 @@ function AppContent() {
                             }
                         />
 
+                        {/* ── QR page ── */}
                         <Route path="/qr" element={<QRPage userProfile={userProfile} />} />
 
+                        {/* ── Public profile page: /@username or /username ── */}
                         <Route
                             path="/:user"
                             element={
@@ -254,21 +232,31 @@ function AppContent() {
                             }
                         />
 
+                        {/* ── Authenticated pages ── */}
                         <Route path="/profile" element={<ProfilePage />} />
-
-                        <Route path="/analytics" element={<Analytics username={userProfile?.username} connected={connected} />} />
+                        <Route
+                            path="/analytics"
+                            element={
+                                <Analytics
+                                    username={userProfile?.username}
+                                    connected={connected}
+                                />
+                            }
+                        />
 
                         <Route path="*" element={<NotFound />} />
                     </Routes>
                 </main>
             </div>
 
+            {/* ── Wallet modal ── */}
             <PhantomModal
                 open={modal}
                 onDone={handlePhantomDone}
                 onCancel={() => setModal(false)}
             />
 
+            {/* ── Verifying wallet overlay ── */}
             {isCheckingProfile && (
                 <div
                     className="fixed inset-0 z-40 flex items-center justify-center"
@@ -291,6 +279,7 @@ function AppContent() {
                 </div>
             )}
 
+            {/* ── New wallet → registration modal ── */}
             {profileStatus === 'new' && connected && publicKey && (
                 <ProfileRegistration
                     walletAddress={publicKey.toBase58()}
@@ -302,6 +291,7 @@ function AppContent() {
                 />
             )}
 
+            {/* ── Tip success overlay ── */}
             {success && (
                 <SuccessOverlay
                     show

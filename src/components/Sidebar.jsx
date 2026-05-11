@@ -10,17 +10,17 @@ import {
 
 const NAV = [
     {
-        group: "Payments",
+        group: "Main",
         items: [
             { id: "tip", label: "Send Tip", Icon: IconSend },
+            { id: "qr", label: "QR Code", Icon: IconQrcode },
         ],
     },
     {
-        group: "Identity",
+        group: "Dashboard",
         items: [
-            { id: "qr", label: "QR Code", Icon: IconQrcode },
-            { id: "profile", label: "Profile", Icon: IconUserCircle },
             { id: "analytics", label: "Analytics", Icon: IconChartAreaLine },
+            { id: "profile", label: "Profile", Icon: IconUserCircle },
         ],
     },
 ]
