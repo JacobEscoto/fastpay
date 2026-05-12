@@ -10,6 +10,10 @@ import {
     IconAt,
     IconDeviceFloppy,
     IconAlertTriangle,
+    IconUserCircle,
+    IconPalette,
+    IconBriefcase2,
+    IconHeartHandshake,
 } from "@tabler/icons-react"
 import { supabase } from "../utils/supabase"
 
@@ -175,6 +179,7 @@ export default function ProfilePage() {
     // Remote data
     const [loadStatus, setLoadStatus] = useState("loading") // loading | ready | error
     const [username, setUsername] = useState("")
+    const [accountRole, setAccountRole] = useState("personal")
 
     // Form Fields
     const [displayName, setDisplayName] = useState("")
@@ -198,7 +203,7 @@ export default function ProfilePage() {
 
         supabase
             .from("profiles")
-            .select("username, display_name, bio, avatar_url")
+            .select("username, display_name, bio, avatar_url, user_role")
             .eq("wallet_address", publicKey.toBase58())
             .maybeSingle()
             .then(({ data, error }) => {
@@ -217,6 +222,7 @@ export default function ProfilePage() {
                 const avDisplay = av ? `${av}?t=${Date.now()}` : ""
 
                 setUsername(data.username ?? "")
+                setAccountRole(data.role ?? data.user_role ?? "personal")
                 setDisplayName(dn)
                 setBio(b)
                 setAvatarUrl(avDisplay)
@@ -225,16 +231,27 @@ export default function ProfilePage() {
             })
     }, [connected, publicKey?.toBase58()])
 
-    /* ── Dirty check ── */
+    function getRoleMeta(r) {
+        const id = (r || "personal").toString()
+        switch (id) {
+            case "creator":
+                return { label: "Creator", icon: <IconPalette size={12} />, bg: "rgba(124,58,237,0.08)", border: "1px solid rgba(124,58,237,0.18)", color: "#7c3aed" }
+            case "freelancer":
+                return { label: "Freelancer", icon: <IconBriefcase2 size={12} />, bg: "rgba(14,165,233,0.06)", border: "1px solid rgba(14,165,233,0.16)", color: "#0ea5e9" }
+            case "non-profit":
+                return { label: "Non-Profit", icon: <IconHeartHandshake size={12} />, bg: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.16)", color: "#10b981" }
+            case "personal":
+            default:
+                return { label: "Personal", icon: <IconUserCircle size={12} />, bg: "rgba(0,255,135,0.06)", border: "1px solid rgba(0,255,135,0.18)", color: "#00ff87" }
+        }
+    }
+
     const isDirty =
         displayName !== originalRef.current.displayName ||
         bio !== originalRef.current.bio ||
         pendingFile !== null
 
-    /* ── Upload avatar to Supabase Storage ──────────────────────────────────
-       Bucket name: "avatars"  (create it in Supabase dashboard → Storage,
-       set public access ON so avatar_url works as a direct image src)
-    ─────────────────────────────────────────────────────────────────────── */
+    // Upload avatar to Supabase Storage (Bucket name: "avatars")
     const uploadAvatar = useCallback(async (file) => {
         const ext = file.name.split(".").pop()
         const path = `${publicKey.toBase58()}/avatar.${ext}`
@@ -249,7 +266,6 @@ export default function ProfilePage() {
         return data.publicUrl
     }, [publicKey])
 
-    /* ── Save ── */
     const handleSave = async () => {
         const dnErr = validateDisplayName(displayName)
         setDisplayNameError(dnErr)
@@ -314,7 +330,6 @@ export default function ProfilePage() {
         setSaveError(null)
     }
 
-    /* ── Not connected guard ── */
     if (!connected) {
         return (
             <div className="flex flex-col items-center justify-center h-full gap-4 text-center px-4">
@@ -331,7 +346,7 @@ export default function ProfilePage() {
         )
     }
 
-    /* ── Loading skeleton ── */
+    /* Loading skeleton */
     if (loadStatus === "loading") {
         return (
             <div className="max-w-lg mx-auto flex flex-col gap-6">
@@ -384,9 +399,6 @@ export default function ProfilePage() {
                 </h1>
             </div>
 
-            {/* ── Username card (read-only) ────────────────────────────────
-                Username is permanent — displayed as identity anchor only.
-            ──────────────────────────────────────────────────────────────── */}
             <section
                 className="fp-card green-top px-5 py-4 flex items-center justify-between gap-4"
                 aria-label="Username"
@@ -413,12 +425,27 @@ export default function ProfilePage() {
                     </div>
                 </div>
 
-                <span className="fp-badge-green shrink-0 text-[10px]">
-                    Locked
-                </span>
+                <div className="flex items-center gap-2">
+                    {(() => {
+                        const meta = getRoleMeta(accountRole)
+                        return (
+                            <span
+                                className="shrink-0 text-[10px] flex items-center gap-1 px-2 py-1 rounded-fp"
+                                style={{ background: meta.bg, border: meta.border, color: meta.color }}
+                            >
+                                {meta.icon}
+                                <span className="font-mono uppercase tracking-tight">{meta.label}</span>
+                            </span>
+                        )
+                    })()}
+
+                    <span className="fp-badge-green shrink-0 text-[10px]">
+                        Locked
+                    </span>
+                </div>
             </section>
 
-            {/* ── Avatar card ── */}
+            {/* Avatar card */}
             <section className="fp-card px-5 py-4" aria-label="Profile photo">
                 <p className="fp-slash text-t3 text-xs tracking-widest mb-4">
                     PROFILE PHOTO
