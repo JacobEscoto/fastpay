@@ -5,14 +5,14 @@ import {
     IconCheck,
     IconX,
     IconUserCircle,
-    IconChartAreaLine
+    IconChartAreaLine,
 } from "@tabler/icons-react"
 
 const NAV = [
     {
         group: "Main",
         items: [
-            { id: "tip", label: "Send Tip", Icon: IconSend },
+            { id: "send", label: "Send Tip", Icon: IconSend },
             { id: "qr", label: "QR Code", Icon: IconQrcode },
         ],
     },

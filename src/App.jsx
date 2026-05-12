@@ -60,6 +60,7 @@ const ProfileWrapper = ({ onSuccess, onQR, walletInfo, connected, onConnect }) =
             onQR={onQR}
             initialHandle={handle}
             initialAmount={validAmount}
+            isAmountLocked={validAmount !== null}
             walletInfo={walletInfo}
             connected={connected}
             onConnect={onConnect}
@@ -199,7 +200,7 @@ function AppContent() {
 
                 <main className="flex-1 bg-bg0 p-4 lg:p-6 overflow-y-auto">
                     <Routes>
-                        {/* ── Homepage: search & send ── */}
+                        {/* Homepage: search & send */}
                         <Route
                             path="/"
                             element={
@@ -215,10 +216,10 @@ function AppContent() {
                             }
                         />
 
-                        {/* ── QR page ── */}
+                        {/* QR page */}
                         <Route path="/qr" element={<QRPage userProfile={userProfile} />} />
 
-                        {/* ── Public profile page: /@username or /username ── */}
+                        {/* Public profile page: /@username or /username */}
                         <Route
                             path="/:user"
                             element={
@@ -232,7 +233,7 @@ function AppContent() {
                             }
                         />
 
-                        {/* ── Authenticated pages ── */}
+                        {/* Authenticated pages */}
                         <Route path="/profile" element={<ProfilePage />} />
                         <Route
                             path="/analytics"
@@ -249,14 +250,14 @@ function AppContent() {
                 </main>
             </div>
 
-            {/* ── Wallet modal ── */}
+            {/* Wallet modal */}
             <PhantomModal
                 open={modal}
                 onDone={handlePhantomDone}
                 onCancel={() => setModal(false)}
             />
 
-            {/* ── Verifying wallet overlay ── */}
+            {/* Verifying wallet overlay */}
             {isCheckingProfile && (
                 <div
                     className="fixed inset-0 z-40 flex items-center justify-center"
@@ -279,7 +280,7 @@ function AppContent() {
                 </div>
             )}
 
-            {/* ── New wallet → registration modal ── */}
+            {/* New wallet → registration modal */}
             {profileStatus === 'new' && connected && publicKey && (
                 <ProfileRegistration
                     walletAddress={publicKey.toBase58()}
@@ -291,7 +292,7 @@ function AppContent() {
                 />
             )}
 
-            {/* ── Tip success overlay ── */}
+            {/* Tip success overlay */}
             {success && (
                 <SuccessOverlay
                     show

@@ -102,6 +102,10 @@ export default function QRPage({ userProfile }) {
                     <input className="fp-input" placeholder="Amount in SOL" type="number" value={amount} onChange={(e) => setAmount(e.target.value)} />
                     <button type="button" className="fp-btn-green" disabled={!connected}>Update QR</button>
                 </div>
+                <p className="font-mono text-[12px] text-t2 mt-2 leading-relaxed">
+                    <span className="uppercase font-bold text-green">Note: </span>
+                    When you share this link, the final user will not be able to modify the tip amount.
+                </p>
             </section>
         </main>
     )

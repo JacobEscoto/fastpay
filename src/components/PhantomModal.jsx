@@ -119,14 +119,14 @@ export default function PhantomModal({ open, onDone, onCancel }) {
                             <li
                                 key={i}
                                 className={`flex items-center gap-2.5 text-xs ${done
-                                        ? "text-t1"
-                                        : "text-t2"
+                                    ? "text-t1"
+                                    : "text-t2"
                                     }`}
                             >
                                 <div
                                     className={`w-5 h-5 rounded-sm flex items-center justify-center text-xs flex-shrink-0 ${done
-                                            ? "text-green"
-                                            : "text-t3"
+                                        ? "text-green"
+                                        : "text-t3"
                                         }`}
                                     style={{
                                         border: done

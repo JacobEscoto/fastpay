@@ -15,12 +15,8 @@ import ErrorToast from "../components/ErrorToast"
 import NotFound from "../pages/NotFound"
 import { supabase } from "../utils/supabase"
 
-/* ─── Constants ─────────────────────────────────────────────────────────── */
-
 const AMOUNTS = [0.1, 0.5, 1, 5, 10]
 const SOL_USD = 146.4
-
-/* ─── Helpers ───────────────────────────────────────────────────────────── */
 
 function getInitials(name) {
     if (!name?.trim()) return "?"
@@ -42,16 +38,11 @@ async function fetchProfileByUsername(username) {
     return data
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   ProfileCard  (left column)
-   Displays avatar, display name, @handle, bio, verified badge, share button.
-═══════════════════════════════════════════════════════════════════════════ */
-
+// ProfileCard  (left column)
 function ProfileCard({ user }) {
     const [copied, setCopied] = useState(false)
 
     const handleShare = async () => {
-        // Always share the canonical profile URL, not any transient ?amount param
         const url = `${window.location.origin}/@${user.username}`
         try {
             await navigator.clipboard.writeText(url)
@@ -70,7 +61,7 @@ function ProfileCard({ user }) {
     return (
         <div className="fp-card green-top p-6 flex flex-col items-center text-center gap-5 lg:sticky lg:top-6">
 
-            {/* ── Avatar ── */}
+            {/* Avatar */}
             <div
                 className="w-24 h-24 rounded-full overflow-hidden flex items-center justify-center font-head font-extrabold text-3xl shrink-0"
                 style={{
@@ -90,7 +81,7 @@ function ProfileCard({ user }) {
                 )}
             </div>
 
-            {/* ── Identity ── */}
+            {/* Identity */}
             <div>
                 <p className="font-head font-extrabold text-xl text-t1 leading-snug">
                     {user.display_name}
@@ -100,19 +91,19 @@ function ProfileCard({ user }) {
                 </p>
             </div>
 
-            {/* ── Bio ── */}
+            {/* Bio */}
             {user.bio && (
                 <p className="font-mono text-xs text-t2 leading-relaxed max-w-[240px]">
                     {user.bio}
                 </p>
             )}
 
-            {/* ── Verified badge ── */}
+            {/* Verified badge */}
             <span className="fp-badge-green inline-flex items-center gap-1.5">
                 <IconCheck size={10} /> Verified Profile
             </span>
 
-            {/* ── Share button ── */}
+            {/* Share button */}
             <button
                 onClick={handleShare}
                 className="w-full flex items-center justify-center gap-2 font-mono text-xs py-2.5 px-4 rounded-lg transition-all duration-200 hover:bg-white/5"
@@ -129,12 +120,9 @@ function ProfileCard({ user }) {
     )
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   PaymentPanel  (right column)
-   Amount picker + custom amount + optional message + CTA + RecentTips.
-═══════════════════════════════════════════════════════════════════════════ */
+// PaymentPanel  (right column)
+function PaymentPanel({ user, initialAmount, isAmountLocked, walletInfo, connected, onConnect, onSuccess }) {
 
-function PaymentPanel({ user, initialAmount, walletInfo, connected, onConnect, onSuccess }) {
     const { sendTip, loading, error } = useFastPay()
 
     const [selAmt, setSelAmt] = useState(0.5)
@@ -211,21 +199,22 @@ function PaymentPanel({ user, initialAmount, walletInfo, connected, onConnect, o
                     </p>
                 </div>
 
-                {/* ── Amount presets ── */}
-                <p className="fp-slash mb-3">SELECT AMOUNT</p>
-                <div className="flex gap-2 flex-wrap mb-3">
+                {/* Amount presets */}
+                <p className="fp-slash mb-3">{isAmountLocked ? "AMOUNT" : "SELECT AMOUNT"}</p>
+                <div className={`flex gap-2 flex-wrap mb-3 ${isAmountLocked ? "opacity-50 pointer-events-none" : ""}`}>
                     {AMOUNTS.map((a) => (
                         <button
                             key={a}
                             onClick={() => { setSelAmt(a); setCustom("") }}
                             className={`fp-chip ${selAmt === a && !custom ? "active" : ""}`}
+                            disabled={isAmountLocked}
                         >
                             {a} SOL
                         </button>
                     ))}
                 </div>
 
-                {/* ── Custom amount + USD conversion ── */}
+                {/* Custom amount + USD conversion */}
                 <div className="flex gap-2 items-center mb-1">
                     <input
                         className={`fp-input flex-1 ${customInvalid ? "border border-red-500/70 focus:border-red-500" : ""}`}
@@ -235,14 +224,18 @@ function PaymentPanel({ user, initialAmount, walletInfo, connected, onConnect, o
                         step="0.01"
                         value={custom}
                         onChange={(e) => { setCustom(e.target.value); setSelAmt(0) }}
+                        disabled={isAmountLocked}
                     />
                     <span className="font-mono text-xs text-t3 whitespace-nowrap min-w-[96px] text-right">
                         ≈ ${Math.round(displayAmt * SOL_USD).toLocaleString()} USD
                     </span>
                 </div>
 
-                {/* Custom amount error */}
-                {customInvalid ? (
+                {isAmountLocked ? (
+                    <div className="mb-3 p-2 bg-green/10 border border-green/30 rounded text-green text-xs font-mono">
+                        Amount is fixed at {displayAmt.toFixed(2)} SOL. Cannot be modified.
+                    </div>
+                ) : customInvalid ? (
                     <div className="flex items-center gap-1.5 mb-3">
                         <IconAlertTriangle size={12} className="text-red-400 shrink-0" />
                         <p className="font-mono text-xs text-red-400">
@@ -253,7 +246,7 @@ function PaymentPanel({ user, initialAmount, walletInfo, connected, onConnect, o
                     <div className="mb-3" />
                 )}
 
-                {/* ── Optional message ── */}
+                {/* Optional message */}
                 <div className="mb-1">
                     <textarea
                         className="fp-input w-full resize-none"
@@ -275,24 +268,6 @@ function PaymentPanel({ user, initialAmount, walletInfo, connected, onConnect, o
                     </div>
                 )}
 
-                {/* ── Primary CTA ── */}
-                <button
-                    className="fp-btn-green w-full justify-center disabled:opacity-50 disabled:cursor-not-allowed"
-                    onClick={connected ? send : onConnect}
-                    disabled={connected && !canSend}
-                >
-                    {!connected ? (
-                        <><IconWallet size={13} /> Connect Wallet to Tip</>
-                    ) : sent ? (
-                        <><IconCheck size={13} /> Sent!</>
-                    ) : loading ? (
-                        <><IconLoader2 size={13} className="animate-spin" /> Processing…</>
-                    ) : (
-                        <><IconSend size={13} /> Send {displayAmt > 0 ? `${displayAmt} SOL ` : ""}via Phantom</>
-                    )}
-                </button>
-
-                {/* Insufficient funds warning */}
                 {connected && insufficientFunds && (
                     <div className="flex items-center gap-1.5 mt-2">
                         <IconAlertTriangle size={12} className="text-red-400 shrink-0" />
@@ -304,34 +279,18 @@ function PaymentPanel({ user, initialAmount, walletInfo, connected, onConnect, o
                 )}
             </div>
 
-            {/* ── Recent activity feed (realtime) ── */}
+            {/* Recent activity feed (realtime) */}
             <RecentTips receiverUsername={user.username} />
         </div>
     )
 }
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   TipPage  (default export)
-
-   Operates in two modes decided by the `initialHandle` prop:
-
-   ① PROFILE MODE  (initialHandle provided — route /:user)
-     • Fetches the profile from Supabase on mount.
-     • Shows a full-screen loading state while fetching.
-     • Shows <NotFound /> if the username doesn't exist.
-     • Renders the two-column layout: ProfileCard | PaymentPanel.
-
-   ② SEARCH MODE  (initialHandle === null — route /)
-     • Shows the recipient search bar.
-     • After a user is found, renders the same two-column layout
-       with a "← Search again" escape hatch.
-═══════════════════════════════════════════════════════════════════════════ */
 
 export default function TipPage({
     onSuccess,
     onQR,
     initialHandle,
     initialAmount,
+    isAmountLocked,
     walletInfo,
     connected,
     onConnect,
@@ -347,7 +306,6 @@ export default function TipPage({
     const [query, setQuery] = useState("")
     const [isSearching, setIsSearching] = useState(false)
 
-    /* ── Auto-load profile when initialHandle is provided ─────────────── */
     useEffect(() => {
         if (!initialHandle) return
 
@@ -366,7 +324,6 @@ export default function TipPage({
         })
     }, [initialHandle])
 
-    /* ── Manual search (homepage) ──────────────────────────────────────── */
     const executeSearch = async (term) => {
         if (!term.trim()) return
         setIsSearching(true)
@@ -386,9 +343,6 @@ export default function TipPage({
         setQuery("")
     }
 
-    /* ══════════════════════════════════════════════════════════════════════
-       RENDER: PROFILE MODE  (initialHandle set)
-    ══════════════════════════════════════════════════════════════════════ */
     if (initialHandle) {
         // ── Loading ──
         if (profileLoading) {
@@ -407,10 +361,8 @@ export default function TipPage({
             )
         }
 
-        // ── Not found ──
         if (notFound) return <NotFound />
 
-        // ── Safety: data still arriving ──
         if (!user) return null
 
         // ── Two-column layout ──
@@ -428,6 +380,7 @@ export default function TipPage({
                     <PaymentPanel
                         user={user}
                         initialAmount={initialAmount}
+                        isAmountLocked={isAmountLocked}
                         walletInfo={walletInfo}
                         connected={connected}
                         onConnect={onConnect}
@@ -438,9 +391,6 @@ export default function TipPage({
         )
     }
 
-    /* ══════════════════════════════════════════════════════════════════════
-       RENDER: SEARCH MODE  (homepage, no initialHandle)
-    ══════════════════════════════════════════════════════════════════════ */
     return (
         <div>
             <div className="mb-5">
@@ -452,7 +402,7 @@ export default function TipPage({
                 </p>
             </div>
 
-            {/* ── Search bar (visible until a user is found) ── */}
+            {/* Search bar (visible until a user is found) */}
             {!user && (
                 <>
                     <p className="fp-slash mb-2.5">RECIPIENT LOOKUP</p>
@@ -500,7 +450,7 @@ export default function TipPage({
                 </>
             )}
 
-            {/* ── Two-column layout once a user is found via search ── */}
+            {/* Two-column layout once a user is found via search */}
             {user && (
                 <div>
                     {/* Escape hatch: go back to search */}
@@ -516,6 +466,7 @@ export default function TipPage({
                         <PaymentPanel
                             user={user}
                             initialAmount={null}
+                            isAmountLocked={false}
                             walletInfo={walletInfo}
                             connected={connected}
                             onConnect={onConnect}
